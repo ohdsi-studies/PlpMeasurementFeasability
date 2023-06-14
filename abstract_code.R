@@ -48,8 +48,8 @@ cdms <- list(
   list(
     cdmName = "optum_ehr",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/optum_ehr",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "optum_ehr"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_optum_ehr_v2447",
@@ -59,8 +59,8 @@ cdms <- list(
   list(
     cdmName = "optum_ses",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/optum_extended_dod",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "optum_extended_dod"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_optum_extended_dod_v2434",
@@ -70,8 +70,8 @@ cdms <- list(
   list(
     cdmName = "ccae",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_ccae",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_ccae"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_ccae_v2435",
@@ -81,8 +81,8 @@ cdms <- list(
   list(
     cdmName = "mdcd",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_mdcd",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_mdcd"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_mdcd_v2359",
@@ -92,8 +92,8 @@ cdms <- list(
   list(
     cdmName = "mdcr",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_mdcr",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_mdcr"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_mdcr_v2433",
@@ -170,8 +170,8 @@ cdms <- list(
   list(
     cdmName = "optum_ehr",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/optum_ehr",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "optum_ehr"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_optum_ehr_v2447",
@@ -181,8 +181,8 @@ cdms <- list(
   list(
     cdmName = "optum_ses",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/optum_extended_dod",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "optum_extended_dod"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_optum_extended_dod_v2434",
@@ -192,8 +192,8 @@ cdms <- list(
   list(
     cdmName = "ccae",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_ccae",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_ccae"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_ccae_v2435",
@@ -203,8 +203,8 @@ cdms <- list(
   list(
     cdmName = "mdcd",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_mdcd",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_mdcd"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_mdcd_v2359",
@@ -214,8 +214,8 @@ cdms <- list(
   list(
     cdmName = "mdcr",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_mdcr",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_mdcr"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_mdcr_v2433",
@@ -328,8 +328,8 @@ cdms <- list(
   list(
     cdmName = "optum_ehr",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/optum_ehr",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "optum_ehr"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_optum_ehr_v2447",
@@ -339,8 +339,8 @@ cdms <- list(
   list(
     cdmName = "optum_ses",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/optum_extended_dod",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "optum_extended_dod"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_optum_extended_dod_v2434",
@@ -350,8 +350,8 @@ cdms <- list(
   list(
     cdmName = "ccae",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_ccae",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_ccae"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_ccae_v2435",
@@ -361,8 +361,8 @@ cdms <- list(
   list(
     cdmName = "mdcd",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_mdcd",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_mdcd"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_mdcd_v2359",
@@ -372,8 +372,8 @@ cdms <- list(
   list(
     cdmName = "mdcr",
     connectionDetails = createConnectionDetails(dbms="redshift", 
-                                                server="***REMOVED***/truven_mdcr",
-                                                user = "***REMOVED***", 
+                                                server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "truven_mdcr"),
+                                                user = keyring::key_get("ohda-prod-1-user"),
                                                 password = keyring::key_get("ohda_prob_1"), 
                                                 port = 5439),
     cdmSchema = "cdm_truven_mdcr_v2433",
@@ -456,8 +456,8 @@ writeLines(df_result_knit, con = "results/result_table.html")
 
 ### 3.1 Building Connection with Database
 
-connectsample = createConnectionDetails(dbms="redshift", server="***REMOVED***/optum_ehr",
-                                        user = "***REMOVED***", password = keyring::key_get("ohda_prob_1"), port = 5439)
+connectsample = createConnectionDetails(dbms="redshift", server=paste0(keyring::key_get("ohda-prod-1-url"), "/", "optum_ehr"),
+                                        user = keyring::key_get("ohda-prod-1-user"), password = keyring::key_get("ohda_prob_1"), port = 5439)
 connection = connect(connectsample)
 
 ### 3.2 Measurements' List in 75% Count
