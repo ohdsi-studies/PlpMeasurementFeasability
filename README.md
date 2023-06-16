@@ -11,6 +11,6 @@ Incorporating Measurement Values into Patient-Level Prediction with Missing Entr
 - Publications: **-**
 - Results explorer: **-**
 
-[Description (single paragraph)]
+This research probes the integration of measurement data into prediction models developed under the OHDSI PatientLevelPrediction framework. The study recognizes that while measurement data such as body weight could enhance the predictive capability of these models, their application is hampered by inconsistent units and incomplete entries. The research investigates five databases adhering to the OMOP Common Data Model (CDM) to discern which measurements could potentially be standardized and included in these models. The findings indicate that claims data typically lack an ample amount of measurements for at least 50% of the target population, creating complications for validation across multiple databases. Conversely, the Optum EHR dataset appears promising due to its broader measurement coverage, suggesting its potential utility for prediction models integrating measurements. The study concludes by calling for more comprehensive research to comprehend the effects of missing values and the practicality of imputing these gaps on the performance of prediction models.
 
-[You can add other text at this point]
+All visualizations can be found in *results* folder, and the whole analysis code can be found in *abstract_code*.
