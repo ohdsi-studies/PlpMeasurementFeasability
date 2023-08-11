@@ -19,7 +19,7 @@ All visualizations from pre-investigation can be found in *results* folder, and 
 *PredictionsPLP_STEP3* is for Bayesian Inference models. \
 *Presentations+Poster* folder will include all presentations, poster, and abstracts: \
   *Wang_Elena_Bayesmeasurements_2023symposium*: OHDSI Symposium Abstract Submission \
-  *Abstract_InternalSymposium_ElenaW*: Internal Symposium Abstract Submission \ 
+  *Abstract_InternalSymposium_ElenaW*: Internal Symposium Abstract Submission \
   *Wang, Elena, Epidemiology_Final*: Oral Presenter Presentation for Internal Symposium \
   *Wang,Elena OHDA*: Poster for Internal Symposium \
   *Wang,Elena, OHDA,GEO*: Presentations for GEO
