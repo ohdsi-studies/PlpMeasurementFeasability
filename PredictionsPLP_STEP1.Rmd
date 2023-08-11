@@ -1,0 +1,238 @@
+---
+title: "PLP Predictions_Step1"
+author: "ElenaW."
+date: "6/26/2023"
+output:
+  html_document:
+  pdf_document:
+    latex_engine: xelatex
+df_print: paged
+---
+
+```{r}
+# java memory setting
+# options(java.parameters = "-Xmx1000m")
+# rJava::.jinit(parameters = c("-Xmx8000m"))
+# add java option in the system
+# _JAVA_OPTIONS="-Xms1024m -Xmx8024m" 
+# DatabaseConnector::getAvailableJavaHeapSpace() * 1/1e9
+options(databaseConnectorInteger64AsNumeric = T)
+```
+
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE)
+# Load necessary packages
+library(SqlRender) # SQL editor
+library(DatabaseConnector) # SQL connector
+library(ggplot2)
+library(dplyr)
+library(tensorflow)
+library(data.table)
+library(gt) # nicer output format
+library(PatientLevelPrediction)
+library(PredictionComparison)
+```
+
+## Predicting hem Stroke (ATLAS ID 2088) within 1 day to 365 days after Afib (ATLAS ID: 12400) patients [Note: non-hem stroke: ATLAS ID 2087)
+
+### 1. Fit standard models using PatientLevelPrediction
+
+### 1.a. Age groups/sex/drugs/conditions in prior 365 days + LASSO Logistic regression [benchmark 1]
+
+Preprocess & Features Engineering
+
+```{r}
+#connectionDetails = createConnectionDetails(dbms="redshift", #server="ohda-prod-1.cldcoxyrkflo.us-east-1.redshift.amazonaws.com/optum_ehr",
+#                                        user = "ewang17", password = keyring::key_get("ohda_prob_1"), port #= 5439)
+#connection = connect(connectionDetails)
+```
+
+```{r}
+#covSetStandard <- FeatureExtraction::createCovariateSettings(
+#useDemographicsGender = T,
+#  useDemographicsAgeGroup = T,
+#  useConditionGroupEraLongTerm = T, 
+#  useDrugEraStartLongTerm  = T, 
+#  longTermStartDays = -365,
+#  endDays = -1
+#)
+```
+
+```{r}
+#databaseDetails <- createDatabaseDetails(
+#  connectionDetails = connectionDetails, 
+#  cdmDatabaseSchema = "cdm_optum_ehr_v2447", 
+#  cdmDatabaseName = "Optum EHR", # name myself
+#  cohortDatabaseSchema = "results_optum_ehr_v2447", 
+#  cohortTable = "cohort", 
+#  outcomeDatabaseSchema = "results_optum_ehr_v2447", 
+#  outcomeTable =  "cohort",
+#  targetId = 12400, 
+#  outcomeIds = 2088,
+#  cdmVersion = 5)
+```
+
+```{r}
+#restrictPlpDataSettings <- createRestrictPlpDataSettings(
+#  # sampleSize = 100000,
+#  firstExposureOnly = T, 
+#  washoutPeriod = 365
+#)
+#
+#plpData1 <- PatientLevelPrediction::getPlpData(
+#  databaseDetails = databaseDetails, 
+#  restrictPlpDataSettings = restrictPlpDataSettings, 
+#  covariateSettings = covSetStandard
+#)
+#
+#savePlpData(plpData1, "stroke_in_af_data1")
+plpData1 = PatientLevelPrediction::loadPlpData("stroke_in_af_data1")
+
+# View(as.data.frame(plpData1$covariateData$covariates))
+# View(as.data.frame(plpData1$covariateData$covariateRef))
+```
+
+Model Predictions
+Github:
+PatientLevelPrediction/extras/testAllClassifiers.R
+
+```{r}
+#populationSettings <- PatientLevelPrediction::createStudyPopulationSettings(
+#  washoutPeriod = 365,
+#  firstExposureOnly = FALSE,
+#  removeSubjectsWithPriorOutcome = TRUE,
+#  priorOutcomeLookback = 9999,
+#  riskWindowStart = 1,
+#  riskWindowEnd = 365,
+#  minTimeAtRisk = 364,
+#  startAnchor = 'cohort start',
+#  endAnchor = 'cohort start',
+#  requireTimeAtRisk = FALSE, # within 1 year, we don’t have so many patients
+#  includeAllOutcomes = TRUE
+#)
+
+```
+
+Reason of 'stratified': \
+
+stratified means that the splitting will maintain the same proportion of positive and negative outcomes in both training and testing datasets as in the original dataset. Stratified split is especially important in scenarios where the outcome variable is imbalanced, as it ensures that the model is trained and tested on a representative sample of both outcome classes. \
+
+Suppose you have a dataset with 1000 instances, where 100 are positive (label 1) and 900 are negative (label 0). This is an imbalanced dataset where 10% of instances are positive and 90% are negative.
+If you use stratified splitting for a 75/25 split, the function will ensure that the same proportion (10% positive, 90% negative) is maintained in both training and testing sets. \
+
+#### LASSO Logistic regression
+
+```{r}
+#plpResultStroke1_Lasso <- PatientLevelPrediction::runPlp(
+#  plpData = plpData1, 
+#  outcomeId = 2088, 
+#  analysisId = 'Stroke', 
+#  analysisName = 'Testing with Stroke', 
+#  populationSettings = populationSettings, 
+#  splitSettings = createDefaultSplitSetting(
+#    trainFraction = 0.75,
+#    testFraction = 0.25,
+#    type = 'stratified',
+#    nfold = 5,
+#    splitSeed = 1234), 
+#  sampleSettings = createSampleSettings(), 
+#  featureEngineeringSettings = createFeatureEngineeringSettings(), 
+#  preprocessSettings = createPreprocessSettings(), 
+#  modelSettings = setLassoLogisticRegression(),   logSettings = createLogSettings(), 
+#  executeSettings = createDefaultExecuteSettings(), 
+#  saveDirectory = "C:/Users/Admin_EWang17/Desktop/BayesMeasurements/PredictionsPLP/StrokeTest_Lasso"
+#)
+```
+
+```{r}
+plpdata1_LassoModel = PatientLevelPrediction::loadPlpModel("C:\\Users\\Admin_EWang17\\Desktop\\BayesMeasurements\\PredictionsPLP\\StrokeTest_Lasso\\Stroke")
+
+plpdata1_LassoResult = PatientLevelPrediction::loadPlpResult("C:\\Users\\Admin_EWang17\\Desktop\\BayesMeasurements\\PredictionsPLP\\StrokeTest_Lasso\\Stroke\\plpResult")
+```
+
+view training/testing set:
+```{r}
+# plpdata1_LassoResult$prediction$evaluationType
+```
+
+
+
+### 1.b. Age groups/sex/drugs/conditions in prior 365 days + GBM [benchmark 2]
+
+```{r}
+#plpResultStroke1_GBM <- PatientLevelPrediction::runPlp(
+#  plpData = plpData1, 
+#  outcomeId = 2088, 
+#  analysisId = 'Stroke', 
+#  analysisName = 'Testing with Stroke', 
+#  populationSettings = populationSettings, 
+#  splitSettings = createDefaultSplitSetting(
+#    trainFraction = 0.75,
+#    testFraction = 0.25,
+#    type = 'stratified',
+#    nfold = 5,
+#    splitSeed = 1234), 
+#  sampleSettings = createSampleSettings(), 
+#  featureEngineeringSettings = createFeatureEngineeringSettings(), 
+#  preprocessSettings = createPreprocessSettings(), 
+#  modelSettings = setGradientBoostingMachine(
+#    ntrees = c(500, 5000),
+#    nthread = c(10),
+#    earlyStopRound = c(25), 
+#    maxDepth = c(4, 7, 10), 
+#    learnRate = c(0.001, 0.1, 0.2, 0.9) 
+#  ),  
+#  logSettings = createLogSettings(), 
+#  executeSettings = createDefaultExecuteSettings(), 
+#  saveDirectory = "C:/Users/Admin_EWang17/Desktop/BayesMeasurements/PredictionsPLP/StrokeTest_GBM")
+```
+
+```{r}
+plpdata1_GBMModel = PatientLevelPrediction::loadPlpModel("C:\\Users\\Admin_EWang17\\Desktop\\BayesMeasurements\\PredictionsPLP\\StrokeTest_GBM\\Stroke")
+
+plpdata1_GBMResult = PatientLevelPrediction::loadPlpResult("C:\\Users\\Admin_EWang17\\Desktop\\BayesMeasurements\\PredictionsPLP\\StrokeTest_GBM\\Stroke\\plpResult")
+```
+```{r}
+plpdata1$covariateData$covariateRef %>%
+  filter(analysisId == 3)
+```
+
+### Performance
+
+#### AUCROC & Calibration
+
+```{r}
+# viewPlp(runPlp=plpdata1_LassoResult)
+PatientLevelPrediction::plotPlp(plpdata1_LassoResult)
+
+# PatientLevelPrediction::plotPlp(plpdata1_LassoResult, saveLocation = "C:\\Users\\Admin_EWang17\\Desktop\\BayesMeasurements\\PredictionsPLP\\StrokeTest_Lasso\\Stroke\\Performance")
+```
+
+```{r}
+# viewPlp(runPlp=plpdata1_GBMResult)
+PatientLevelPrediction::plotPlp(plpdata1_GBMResult)
+
+# PatientLevelPrediction::plotPlp(plpdata1_GBMResult, saveLocation = "C:\\Users\\Admin_EWang17\\Desktop\\BayesMeasurements\\PredictionsPLP\\StrokeTest_GBM\\Stroke\\Performance")
+```
+
+#### Net Benefit
+
+```{r}
+#NetBenefit_lasso = extractNetBenefit(plpdata1_LassoResult)
+```
+
+#### integrated discrimination improvement (IDI)
+
+```{r}
+idi = IDI(plpModel1 = plpdata1_LassoResult, plpModel2 = plpdata1_GBMResult)
+print(idi)
+```
+
+#### Net Reclassification Improvement (NRI)
+
+```{r}
+nri <- NRI(plpModel1 = plpdata1_LassoResult, plpModel2 = plpdata1_GBMResult, thresholds = seq(0, 1, 0.1))
+print(nri)
+```
+

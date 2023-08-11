@@ -1,0 +1,606 @@
+---
+title: "PredictionsPLP_STEP3.1Stratified"
+author: "ElenaW."
+date: "8/10/2023"
+output:
+  html_document:
+  pdf_document:
+    latex_engine: xelatex
+df_print: paged
+---
+
+```{r}
+options(databaseConnectorInteger64AsNumeric = T)
+```
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE)
+# Load necessary packages
+library(SqlRender) # SQL editor
+library(DatabaseConnector) # SQL connector
+library(ggplot2)
+library(dplyr)
+library(tensorflow)
+library(data.table)
+library(gt) # nicer output format
+library(PatientLevelPrediction)
+library(PredictionComparison)
+```
+
+### Load Original Data
+
+Preprocess & Features Engineering
+
+```{r}
+connectionDetails = createConnectionDetails(dbms="redshift", server="ohda-prod-1.cldcoxyrkflo.us-east-1.redshift.amazonaws.com/optum_ehr",
+user = "ewang17", password = keyring::key_get("ohda_prob_1"), port = 5439)
+connection = connect(connectionDetails)
+```
+
+```{r}
+optum_ehr1 <- renderTranslateQuerySql(connection, 
+                                      "WITH person_measurement AS (
+    SELECT 
+      c2.concept_name AS measurement_concept_name,
+      c2.concept_id AS measurement_concept_id,
+      m.person_id
+    FROM 
+      cdm_optum_ehr_v2447.measurement m
+    INNER JOIN 
+      results_optum_ehr_v2447.cohort c1
+    ON 
+      m.person_id = c1.subject_id
+    INNER JOIN 
+      cdm_optum_ehr_v2447.concept c2 
+    ON
+      COALESCE(m.measurement_concept_id, 0) = c2.concept_id 
+    INNER JOIN 
+      cdm_optum_ehr_v2447.concept c3
+    ON
+      COALESCE(m.unit_concept_id, 0) = c3.concept_id
+    WHERE 
+      c1.cohort_definition_id = 5430
+    AND 
+      c2.concept_name != 'No matching concept' -- Filter out 'No matching concept'
+    AND 
+      ABS(DATEDIFF(DAY, m.measurement_date, c1.cohort_start_date) / 
+          CASE 
+            WHEN DATEPART(YEAR, c1.cohort_start_date) % 4 = 0 
+            THEN 366.0
+            ELSE 365.0
+          END) < 1.0
+  ),
+  measurement_frequency AS (
+    SELECT measurement_concept_id, measurement_concept_name, COUNT(DISTINCT person_id) as person_count,
+    ROUND(COUNT(DISTINCT person_id) * 100.0 / (SELECT COUNT(DISTINCT person_id) FROM person_measurement), 0) as frequency
+    FROM person_measurement
+    GROUP BY measurement_concept_id, measurement_concept_name
+  )
+  SELECT frequency.measurement_concept_name, frequency.measurement_concept_id, frequency.frequency, c.concept_name
+  FROM measurement_frequency AS frequency
+  INNER JOIN cdm_optum_ehr_v2447.concept AS c ON frequency.measurement_concept_id = c.concept_id
+  WHERE frequency.frequency >= 75
+  ORDER BY frequency.frequency DESC")
+```
+
+```{r}
+optum_ehr2 = renderTranslateQuerySql(connection, 
+                                     "WITH measurement_units AS (
+  SELECT 
+    c2.concept_name AS measurement_concept_name,
+    c2.concept_id AS measurement_concept_id,
+    c3.concept_name AS unit_concept_name,
+    CASE 
+      WHEN c3.concept_name = 'No matching concept' THEN 'others'
+      ELSE m.unit_source_value
+    END AS unit_source_value,
+    COUNT(*) AS count
+  FROM 
+    cdm_optum_ehr_v2447.measurement m
+  INNER JOIN 
+    results_optum_ehr_v2447.cohort c1
+  ON 
+    m.person_id = c1.subject_id
+  INNER JOIN 
+    cdm_optum_ehr_v2447.concept c2 
+  ON
+    COALESCE(m.measurement_concept_id,0) = c2.concept_id  
+  INNER JOIN 
+    cdm_optum_ehr_v2447.concept c3
+  ON
+    COALESCE(m.unit_concept_id,0) = c3.concept_id
+  WHERE 
+    c1.cohort_definition_id = 5430
+  AND 
+    c2.concept_name != 'No matching concept'
+  AND 
+    ABS(DATEDIFF(DAY, m.measurement_date, c1.cohort_start_date) / 
+        CASE 
+          WHEN DATEPART(YEAR, c1.cohort_start_date) % 4 = 0 
+          THEN 366.0
+          ELSE 365.0
+        END) < 1.0
+  GROUP BY 
+    c2.concept_name, 
+    c2.concept_id,
+    c3.concept_name,
+    CASE 
+      WHEN c3.concept_name = 'No matching concept' THEN 'others'
+      ELSE m.unit_source_value
+    END
+),
+total_counts AS (
+  SELECT 
+    measurement_concept_name,
+    measurement_concept_id,
+    SUM(count) AS total_count
+  FROM 
+    measurement_units
+  GROUP BY 
+    measurement_concept_name,
+    measurement_concept_id
+)
+SELECT 
+  mu.measurement_concept_name,
+  mu.measurement_concept_id,
+  mu.unit_concept_name,
+  mu.unit_source_value,
+  mu.count,
+  tc.total_count,
+  CAST(mu.count AS FLOAT) / tc.total_count * 100 AS percentage
+FROM 
+  measurement_units mu
+INNER JOIN 
+  total_counts tc 
+ON 
+  mu.measurement_concept_name = tc.measurement_concept_name
+  AND mu.measurement_concept_id = tc.measurement_concept_id
+ORDER BY 
+  mu.measurement_concept_name, 
+  percentage DESC
+")
+
+measurements_75 <- optum_ehr2[optum_ehr2$MEASUREMENT_CONCEPT_NAME %in% optum_ehr1$CONCEPT_NAME, ]
+
+# Ordering the data frame
+measurements_75 <- measurements_75 %>%
+  filter(PERCENTAGE > 10) %>%
+  select(MEASUREMENT_CONCEPT_NAME, MEASUREMENT_CONCEPT_ID, UNIT_CONCEPT_NAME,UNIT_SOURCE_VALUE, PERCENTAGE) %>%
+  arrange(MEASUREMENT_CONCEPT_NAME, desc(PERCENTAGE))
+
+measurements_75 <- rename(measurements_75, Measurement = MEASUREMENT_CONCEPT_NAME, Measurement_ID = MEASUREMENT_CONCEPT_ID)
+
+# filter out "No matching concept"
+measurements_75 <- subset(measurements_75, UNIT_CONCEPT_NAME != "No matching concept")
+
+measurements_75 <- measurements_75 %>%
+  group_by(Measurement, Measurement_ID) %>%
+  summarise(
+    Units = paste(UNIT_CONCEPT_NAME, collapse = ", "),
+    `Unit Source Values` = paste(UNIT_SOURCE_VALUE, collapse = ", "),
+    `Percent Coverage` = paste0(round(sum(PERCENTAGE), 2), "%")
+  )
+measurements_75
+```
+
+```{r}
+optum_ehr2 = renderTranslateQuerySql(connection, 
+                                     "WITH measurement_units AS (
+  SELECT 
+    c2.concept_name AS measurement_concept_name,
+    c2.concept_id AS measurement_concept_id,
+    c3.concept_name AS unit_concept_name,
+    c3.concept_id AS unit_concept_id,
+    CASE 
+      WHEN c3.concept_name = 'No matching concept' THEN 'others'
+      ELSE m.unit_source_value
+    END AS unit_source_value,
+    COUNT(*) AS count
+  FROM 
+    cdm_optum_ehr_v2447.measurement m
+  INNER JOIN 
+    results_optum_ehr_v2447.cohort c1
+  ON 
+    m.person_id = c1.subject_id
+  INNER JOIN 
+    cdm_optum_ehr_v2447.concept c2 
+  ON
+    COALESCE(m.measurement_concept_id,0) = c2.concept_id  
+  INNER JOIN 
+    cdm_optum_ehr_v2447.concept c3
+  ON
+    COALESCE(m.unit_concept_id,0) = c3.concept_id
+  WHERE 
+    c1.cohort_definition_id = 5430
+  AND 
+    c2.concept_name != 'No matching concept'
+  AND 
+    ABS(DATEDIFF(DAY, m.measurement_date, c1.cohort_start_date) / 
+        CASE 
+          WHEN DATEPART(YEAR, c1.cohort_start_date) % 4 = 0 
+          THEN 366.0
+          ELSE 365.0
+        END) < 1.0
+  GROUP BY 
+    c2.concept_name, 
+    c2.concept_id,
+    c3.concept_name,
+    c3.concept_id,
+    CASE 
+      WHEN c3.concept_name = 'No matching concept' THEN 'others'
+      ELSE m.unit_source_value
+    END
+),
+total_counts AS (
+  SELECT 
+    measurement_concept_name,
+    measurement_concept_id,
+    SUM(count) AS total_count
+  FROM 
+    measurement_units
+  GROUP BY 
+    measurement_concept_name,
+    measurement_concept_id
+)
+SELECT 
+  mu.measurement_concept_name,
+  mu.measurement_concept_id,
+  mu.unit_concept_name,
+  mu.unit_concept_id,
+  mu.unit_source_value,
+  mu.count,
+  tc.total_count,
+  CAST(mu.count AS FLOAT) / tc.total_count * 100 AS percentage
+FROM 
+  measurement_units mu
+INNER JOIN 
+  total_counts tc 
+ON 
+  mu.measurement_concept_name = tc.measurement_concept_name
+  AND mu.measurement_concept_id = tc.measurement_concept_id
+ORDER BY 
+  mu.measurement_concept_name, 
+  percentage DESC
+")
+
+measurements_75 <- optum_ehr2[optum_ehr2$MEASUREMENT_CONCEPT_NAME %in% optum_ehr1$CONCEPT_NAME, ]
+
+# Ordering the data frame
+measurements_75 <- measurements_75 %>%
+  filter(PERCENTAGE > 10) %>%
+  select(MEASUREMENT_CONCEPT_NAME, MEASUREMENT_CONCEPT_ID, UNIT_CONCEPT_NAME, UNIT_CONCEPT_ID, UNIT_SOURCE_VALUE, PERCENTAGE) %>%
+  arrange(MEASUREMENT_CONCEPT_NAME, desc(PERCENTAGE))
+
+measurements_75 <- rename(measurements_75, Measurement = MEASUREMENT_CONCEPT_NAME, Measurement_ID = MEASUREMENT_CONCEPT_ID, Units = UNIT_CONCEPT_NAME, Units_ID = UNIT_CONCEPT_ID)
+
+# filter out "No matching concept"
+measurements_75 <- subset(measurements_75, Units != "No matching concept")
+
+measurements_75 <- measurements_75 %>%
+  group_by(Measurement, Measurement_ID) %>%
+  summarise(
+    Units = paste(Units, collapse = ", "),
+    Units_ID = paste(Units_ID, collapse = ", "),
+    `Unit Source Values` = paste(UNIT_SOURCE_VALUE, collapse = ", "),
+    `Percent Coverage` = paste0(round(sum(PERCENTAGE), 2), "%")
+  )
+measurements_75
+```
+
+#### define createCohortCovariateSettings
+
+```{r}
+getMeasurementCovariateData <- function(connection,
+                                        oracleTempSchema = NULL,
+                                        cdmDatabaseSchema,
+                                        cdmVersion = "5",
+                                        cohortTable = "#cohort_person",
+                                        rowIdField = "row_id",
+                                        aggregated,
+                                        cohortId,
+                                        covariateSettings) {
+  
+  ParallelLogger::logInfo(paste0('Extracting measurement ', covariateSettings$covariateId))
+  
+  # Some SQL to construct the covariate:
+  sql <- paste("select * from (select c.@row_id_field AS row_id, measurement_concept_id, unit_concept_id,",
+               "measurement_date, abs(datediff(dd, measurement_date, c.cohort_start_date)) as index_time,value_as_number raw_value,",
+               "row_number() over (partition by @row_id_field  order by measurement_date desc) as rn,",
+               "@covariate_id as covariate_id",
+               "from @cdm_database_schema.measurement m inner join @cohort_temp_table c on c.subject_id = m.person_id
+   and measurement_date >= dateadd(day, @startDay, cohort_start_date) and 
+   measurement_date <= dateadd(day, @endDay, cohort_start_date)",
+               "inner join @cdm_database_schema.person p on p.person_id=c.subject_id",
+               "where m.measurement_concept_id in (@concepts) and m.unit_concept_id in (@units)) temp where rn = 1;"
+  )
+  
+  sql <- SqlRender::render(sql,
+                           cohort_temp_table = cohortTable,
+                           row_id_field = rowIdField,
+                           startDay=covariateSettings$startDay,
+                           endDay=covariateSettings$endDay,
+                           concepts = paste(covariateSettings$conceptSet, collapse = ','),
+                           units = paste(covariateSettings$conceptUnitSet, collapse = ','),
+                           cdm_database_schema = cdmDatabaseSchema,
+                           covariate_id = covariateSettings$covariateId
+  )
+  sql <- SqlRender::translate(sql, targetDialect = attr(connection, "dbms"),
+                              oracleTempSchema = oracleTempSchema)
+  # Retrieve the covariate:
+  covariates <- DatabaseConnector::querySql(connection, sql, integer64AsNumeric = TRUE)
+  # Convert colum names to camelCase:
+  colnames(covariates) <- SqlRender::snakeCaseToCamelCase(colnames(covariates))
+  
+  ParallelLogger::logInfo(paste0('Extracted data'))
+  
+  # map data:
+  ParallelLogger::logInfo(paste0(sum(is.na(covariates$rawValue)), ' NA values'))
+  covariates <- covariates[!is.na(covariates$rawValue),]
+  ParallelLogger::logInfo(paste0(nrow(covariates), ' patients with measurement'))
+  if(nrow(covariates) > 0 ){
+    covariates <- covariateSettings$scaleMap(covariates)
+  }
+  
+  ParallelLogger::logInfo(paste0('Processed data'))
+  
+  # Construct covariate reference:
+  covariateRef <- data.frame(covariateId = covariateSettings$covariateId,
+                             covariateName = paste('Measurement during day',
+                                                   covariateSettings$startDay,
+                                                   'through',
+                                                   covariateSettings$endDay,
+                                                   'days relative to index:',
+                                                   covariateSettings$covariateName
+                             ),
+                             analysisId = covariateSettings$analysisId,
+                             conceptId = 0)
+  
+  analysisRef <- data.frame(analysisId = covariateSettings$analysisId,
+                            analysisName = "measurement covariate",
+                            domainId = "measurement covariate",
+                            startDay = covariateSettings$startDay,
+                            endDay = covariateSettings$endDay,
+                            isBinary = "N",
+                            missingMeansZero = "Y")
+  
+  metaData <- list(sql = sql, call = match.call())
+  result <- Andromeda::andromeda(covariates = covariates,
+                                 covariateRef = covariateRef,
+                                 analysisRef = analysisRef)
+  attr(result, "metaData") <- metaData
+  class(result) <- "CovariateData"	
+  return(result)
+}
+
+
+createMeasurementCovariateSettings <- function(covariateName, conceptSet, conceptUnitSet,
+                                               cohortDatabaseSchema, cohortTable, cohortId,
+                                               startDay=-30, endDay=0, 
+                                               scaleMap = NULL,
+                                               imputationValue = 0,
+                                               covariateId = 1466,
+                                               #measurementId = 1,
+                                               analysisId = 466
+) {
+  
+  covariateSettings <- list(covariateName=covariateName, 
+                            conceptSet=conceptSet,
+                            conceptUnitSet = conceptUnitSet,
+                            startDay=startDay,
+                            endDay=endDay,
+                            scaleMap=scaleMap,
+                            imputationValue = imputationValue,
+                            covariateId = covariateId,
+                            #measurementId = measurementId, 
+                            analysisId = analysisId
+  )
+  
+  attr(covariateSettings, "fun") <- "getMeasurementCovariateData"
+  class(covariateSettings) <- "covariateSettings"
+  return(covariateSettings)
+}
+```
+
+```{r}
+covSetStandard <- FeatureExtraction::createCovariateSettings(
+useDemographicsGender = T,
+  useDemographicsAgeGroup = T,
+  useConditionGroupEraLongTerm = T, 
+  useDrugEraStartLongTerm  = T, 
+  longTermStartDays = -365,
+  endDays = -1
+)
+```
+
+#### measurments settings (no imputation)
+
+```{r}
+measurement1 <- createMeasurementCovariateSettings(
+  covariateName = 'Blood urea nitrogen measurement',
+  analysisId = 333,
+  conceptSet = c(4017361, 3036277, 3038553, 3020891, 3025315, 3032710, 3008500, 3045820, 3012888, 4154790, 3026361, 3004501, 3009542, 3000963, 3010813, 3024731, 3027315, 3021716, 3045980, 3024171, 40760098, 3004249),
+  conceptUnitSet = c(8840),
+  startDay = -365, 
+  endDay = -1, 
+  scaleMap = NULL,
+  imputationValue = NULL,
+  covariateId = 1333
+)
+```
+
+```{r}
+measurement2 <- createMeasurementCovariateSettings(
+  covariateName = 'Body height',
+  analysisId = 333,
+  conceptSet = c(4017361, 3036277, 3038553, 3020891, 3025315, 3032710, 3008500, 3045820, 3012888, 4154790, 3026361, 3004501, 3009542, 3000963, 3010813, 3024731, 3027315, 3021716, 3045980, 3024171, 40760098, 3004249),
+  conceptUnitSet = c(8582, 9330),
+  startDay = -365, 
+  endDay = -1, 
+  scaleMap = NULL,
+  imputationValue = NULL,
+  covariateId = 2333
+)
+```
+
+```{r}
+measurement3 <- createMeasurementCovariateSettings(
+  covariateName = 'Body mass index (BMI) [Ratio]',
+  analysisId = 333,
+  conceptSet = c(4017361, 3036277, 3038553, 3020891, 3025315, 3032710, 3008500, 3045820, 3012888, 4154790, 3026361, 3004501, 3009542, 3000963, 3010813, 3024731, 3027315, 3021716, 3045980, 3024171, 40760098, 3004249),
+  conceptUnitSet = c(9531),
+  startDay = -365, 
+  endDay = -1, 
+  scaleMap = NULL,
+  imputationValue = NULL,
+  covariateId = 3333
+)
+```
+
+```{r}
+measurement4 <- createMeasurementCovariateSettings(
+  covariateName = 'Body temperature',
+  analysisId = 333,
+  conceptSet = c(4017361, 3036277, 3038553, 3020891, 3025315, 3032710, 3008500, 3045820, 3012888, 4154790, 3026361, 3004501, 3009542, 3000963, 3010813, 3024731, 3027315, 3021716, 3045980, 3024171, 40760098, 3004249),
+  conceptUnitSet = c(586323),
+  startDay = -365, 
+  endDay = -1, 
+  scaleMap = NULL,
+  imputationValue = NULL,
+  covariateId = 4333
+)
+```
+
+```{r}
+measurement5 <- createMeasurementCovariateSettings(
+  covariateName = 'Body weight',
+  analysisId = 333,
+  conceptSet = c(4017361, 3036277, 3038553, 3020891, 3025315, 3032710, 3008500, 3045820, 3012888, 4154790, 3026361, 3004501, 3009542, 3000963, 3010813, 3024731, 3027315, 3021716, 3045980, 3024171, 40760098, 3004249),
+  conceptUnitSet = c(9529, 8739),
+  startDay = -365, 
+  endDay = -1, 
+  scaleMap = NULL,
+  imputationValue = NULL,
+  covariateId = 5333
+)
+```
+
+#### measurements 6-19
+
+```{r}
+unitConceptIds <- measurements_75[c(6,7,8,9,10,11,12,13,14,15,16,17,18,19),] %>% dplyr::pull("Units_ID") 
+covariateNames <- measurements_75[c(6,7,8,9,10,11,12,13,14,15,16,17,18,19),] %>% dplyr::pull("Measurement")
+covariateIds <- c(6333, 7333, 8333, 9333, 10333, 11333, 12333, 13333, 14333, 15333, 16333, 17333, 18333, 19333)
+
+# Initialize list to hold measurement settings
+measurement <- list()
+
+for (i in 1:length(unitConceptIds)) {
+  
+  measurement[[i]] <- createMeasurementCovariateSettings(
+    covariateName = covariateNames[i],
+    analysisId = 333,
+    conceptSet = c(4017361, 3036277, 3038553, 3020891, 3025315, 3032710, 3008500, 3045820, 3012888, 4154790, 3026361, 3004501, 3009542, 3000963, 3010813, 3024731, 3027315, 3021716, 3045980, 3024171, 40760098, 3004249),
+    conceptUnitSet = unitConceptIds[i],
+    startDay = -365, 
+    endDay = -1, 
+    scaleMap = NULL,
+    imputationValue = NULL,
+    covariateId = covariateIds[i]
+  )
+}
+
+# Create a vector of the variable names
+var_names <- paste0("measurement", 6:19)
+
+# Use a loop to assign measurements to variables dynamically
+for (i in 1:14) {
+  assign(var_names[i], measurement[[i]])
+}
+```
+
+#### measurement 20 
+Respiratory rate has same unit_id (8483) but diff unit_source_value (breaths/min, bpm)
+
+```{r}
+measurement20 <- createMeasurementCovariateSettings(
+  covariateName = 'Respiratory rate',
+  analysisId = 333,
+  conceptSet = c(4017361, 3036277, 3038553, 3020891, 3025315, 3032710, 3008500, 3045820, 3012888, 4154790, 3026361, 3004501, 3009542, 3000963, 3010813, 3024731, 3027315, 3021716, 3045980, 3024171, 40760098, 3004249),
+  conceptUnitSet = c(8483),
+  startDay = -365, 
+  endDay = -1, 
+  scaleMap = NULL,
+  imputationValue = NULL,
+  covariateId = 20333
+)
+```
+
+#### measurements 21-22
+
+```{r}
+unitConceptIds_21 <- measurements_75[c(21,22),] %>% dplyr::pull("Units_ID") 
+covariateNames_21 <- measurements_75[c(21,22),] %>% dplyr::pull("Measurement")
+covariateIds_21 <- c(21333, 22333)
+
+# Initialize list to hold measurement settings
+measurement_21 <- list()
+
+for (i in 1:length(unitConceptIds_21)) {
+  
+  measurement_21[[i]] <- createMeasurementCovariateSettings(
+    covariateName = covariateNames_21[i],
+    analysisId = 333,
+    conceptSet = c(4017361, 3036277, 3038553, 3020891, 3025315, 3032710, 3008500, 3045820, 3012888, 4154790, 3026361, 3004501, 3009542, 3000963, 3010813, 3024731, 3027315, 3021716, 3045980, 3024171, 40760098, 3004249),
+    conceptUnitSet = unitConceptIds_21[i],
+    startDay = -365, 
+    endDay = -1, 
+    scaleMap = NULL,
+    imputationValue = NULL,
+    covariateId = covariateIds_21[i]
+  )
+}
+
+# Extract the measurements from the list and assign them to individual variables
+measurement21 <- measurement_21[[1]]
+measurement22 <- measurement_21[[2]]
+```
+
+```{r}
+covariateSettings <- c(list(covSetStandard), mget(paste0("measurement", 1:22)))
+covariateSettings$scaleMap <- NULL
+```
+
+```{r}
+databaseDetails <- createDatabaseDetails(
+  connectionDetails = connectionDetails, 
+  cdmDatabaseSchema = "cdm_optum_ehr_v2447", 
+  cdmDatabaseName = "Optum EHR", # name myself
+  cohortDatabaseSchema = "results_optum_ehr_v2447", 
+  cohortTable = "cohort", 
+  outcomeDatabaseSchema = "results_optum_ehr_v2447", 
+  outcomeTable =  "cohort",
+  targetId = 12400, 
+  outcomeIds = 2088,
+  cdmVersion = 5)
+```
+
+```{r}
+restrictPlpDataSettings <- createRestrictPlpDataSettings(
+  sampleSize = 1000,
+  firstExposureOnly = T, 
+  washoutPeriod = 365
+)
+
+plpData3.1 <- PatientLevelPrediction::getPlpData(
+  databaseDetails = databaseDetails, 
+  restrictPlpDataSettings = restrictPlpDataSettings, 
+  covariateSettings = covariateSettings
+)
+View(as.data.frame(plpData3.1$covariateData$covariates))
+     
+savePlpData(plpData, "D:/andromedaTemp/PredictionsPLP/stroke_in_af_data3.1")
+plpData3.1 = PatientLevelPrediction::loadPlpData("D:/andromedaTemp/PredictionsPLP/stroke_in_af_data3.1")
+
+View(as.data.frame(plpData3.1$covariateData$covariates))
+View(as.data.frame(plpData3.1$covariateData$covariateRef))
+```

@@ -1,0 +1,108 @@
+---
+title: "PLP Predictions_Step3 BayesianBridge"
+author: "ElenaW."
+date: "8/3/2023"
+output:
+  html_document:
+  pdf_document:
+    latex_engine: xelatex
+df_print: paged
+---
+
+```{r}
+library(reticulate)
+#Check if bayesbridge is in the detected environments:
+conda_list()
+#Use correct environment:
+use_condaenv("bayesbridge")
+```
+
+```{r}
+# options(andromedaTempFolder = "D:/andromedaTemp")
+```
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE)
+# Load necessary packages
+library(SqlRender) # SQL editor
+library(DatabaseConnector) # SQL connector
+library(ggplot2)
+library(dplyr)
+library(tensorflow)
+library(data.table)
+library(gt) # nicer output format
+library(PatientLevelPrediction)
+library(PredictionComparison)
+# library(RCRI)
+```
+
+```{r}
+connectionDetails = createConnectionDetails(dbms="redshift", server="ohda-prod-1.cldcoxyrkflo.us-east-1.redshift.amazonaws.com/optum_ehr",
+user = "ewang17", password = keyring::key_get("ohda_prob_1"), port = 5439)
+connection = connect(connectionDetails)
+```
+
+## try original data
+
+```{r}
+covSetStandard <- FeatureExtraction::createCovariateSettings(
+useDemographicsGender = T,
+  useDemographicsAgeGroup = T,
+  useConditionGroupEraLongTerm = T, 
+  useDrugEraStartLongTerm  = T, 
+  longTermStartDays = -365,
+  endDays = -1
+)
+```
+
+```{r}
+databaseDetails <- createDatabaseDetails(
+  connectionDetails = connectionDetails, 
+  cdmDatabaseSchema = "cdm_optum_ehr_v2447", 
+  cdmDatabaseName = "Optum EHR", # name myself
+  cohortDatabaseSchema = "results_optum_ehr_v2447", 
+  cohortTable = "cohort", 
+  outcomeDatabaseSchema = "results_optum_ehr_v2447", 
+  outcomeTable =  "cohort",
+  targetId = 12400, 
+  outcomeIds = 2088,
+  cdmVersion = 5)
+```
+
+```{r}
+restrictPlpDataSettings <- createRestrictPlpDataSettings(
+  sampleSize = 50000,
+  firstExposureOnly = T, 
+  washoutPeriod = 365
+)
+
+plpData1 <- PatientLevelPrediction::getPlpData(
+  databaseDetails = databaseDetails, 
+  restrictPlpDataSettings = restrictPlpDataSettings, 
+  covariateSettings = covSetStandard
+)
+
+```
+```{r}
+use_condaenv("bayesbridge")
+bayesSett <- setBayesBridge(
+  seed = NULL,
+  n_iter = 10000, #number iterations
+  n_burnin = 1000, #number burn-in samples
+  bridge_exponent = 1, #accepts values in (0,1]. Strength of regularization (the smaller, the sparser)
+  regularizing_slab_size = 1, #Standard deviation of the Gaussian tail-regularizer on the bridge prior
+  thin = 1, #Number of iterations per saved sample
+  n_status_update = 10, #Number of status updates (currently somewhat broken in PLP)
+  init = list(global_scale = 0.1), #Any initial chain values for global, local scales or coefficients
+  coef_sampler_type = "cholesky", #Coefficient sampler type (accepts 'hmc', 'cholesky', 'cg')
+  params_to_fix = c(), #Fix and do not sample global or local scales
+  local_scale_sampler_type = "all", #Type of local scale sampler, best to leave as "all"
+  params_to_save = c('coef', 'global_scale', 'logp'), #saved paramaters to be output
+  fixed_effects = NULL,
+  mixture = NULL
+)
+
+res <- runPlp(
+  plpData1,
+  modelSettings = bayesSett)
+```
